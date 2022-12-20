@@ -33,9 +33,9 @@ class Sqdb:
         with self.connection:
             self.cursor.execute(f"""UPDATE dict_users SET dict = '{dict_}' WHERE user_id = {user_id}""")
 
-    def upd_shuffle(self, user_id, value):
+    def upd_data(self, user_id, key, value):
         with self.connection:
-            self.cursor.execute(f"UPDATE dict_users SET shuffle = {value} WHERE user_id = {user_id}")
+            self.cursor.execute(f"UPDATE dict_users SET {key} = {value} WHERE user_id = {user_id}")
 
     def get_data(self, user_id, data):
         with self.connection:

@@ -4,10 +4,10 @@ from random import shuffle
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.types import Message, ParseMode
+from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.utils.markdown import hcode
-
+from aiogram.utils.markdown import hcode, hbold
+from emoji import emojize
 from config import token, owner_id, separator, sql
 
 logging.basicConfig(level=logging.DEBUG)
@@ -15,12 +15,13 @@ bot = Bot(token=token)
 dp = Dispatcher(bot, storage=MemoryStorage())
 
 
-class AddDict(StatesGroup):
+class Dictation(StatesGroup):
     adding_dict = State()
+    dictate = State()
 
 
-class LetsDictate(StatesGroup):
-    Dictate = State()
+class Options(StatesGroup):
+    option = State()
 
 
 async def cancel_state(state: FSMContext):
@@ -57,11 +58,11 @@ async def cancel(message: Message, state: FSMContext):
 
 @dp.message_handler(commands=['add'])
 async def add(message: Message):
-    await AddDict.adding_dict.set()
+    await Dictation.adding_dict.set()
     await message.answer('dict...')
 
 
-@dp.message_handler(state=AddDict.adding_dict)
+@dp.message_handler(state=Dictation.adding_dict)
 async def state_AddDict_adding_dict(message: Message, state: FSMContext):
     text = message.text.split('\n')
     dict_ = {}
@@ -75,8 +76,9 @@ async def state_AddDict_adding_dict(message: Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(commands=['begin', 'run', 'dictate'])
+@dp.message_handler(commands=['begin', 'run', 'dictate'], state='*')
 async def dictate(message: Message, state: FSMContext):
+    await cancel_state(state)
     dict_ = sql.get_data(message.from_user.id, 'dict')
     dict_ = dict_.split('\n')
     to_dictate = {}
@@ -91,11 +93,11 @@ async def dictate(message: Message, state: FSMContext):
 
     await state.update_data(to_dictate=to_dictate, count=0, correct=0, incorrect=0)
     await message.answer('1. ' + list(to_dictate.keys())[0])
-    await LetsDictate.Dictate.set()
+    await Dictation.dictate.set()
 
 
-@dp.message_handler(state=LetsDictate.Dictate)
-async def state_LetsDictate_Dictate(message: types.Message, state: FSMContext):
+@dp.message_handler(state=Dictation.dictate)
+async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
     data = await state.get_data()
     count = data['count']
     correct = data['correct']
@@ -120,7 +122,29 @@ async def state_LetsDictate_Dictate(message: types.Message, state: FSMContext):
         await state.finish()
     else:
         await message.answer(f'{count + 1}. {list(to_dictate.keys())[count]}')
-        await LetsDictate.Dictate.set()
+        await Dictation.dictate.set()
+
+
+@dp.message_handler(commands=['options'], state='*')
+async def options(message: Message, state: FSMContext):
+    await cancel_state(state)
+    is_shuffle = sql.get_data(message.from_user.id, 'shuffle')
+    shufflemoji = ':check_mark_button:' if is_shuffle else ':cross_mark:'
+    markup = InlineKeyboardMarkup()
+    shuffleB = InlineKeyboardButton(emojize(f'Перемешивание {shufflemoji}'), callback_data='shuffle')
+    markup.row(shuffleB)
+    await message.answer(f"{hbold('Настройки:')}\n", parse_mode=ParseMode.HTML, reply_markup=markup)
+
+
+@dp.callback_query_handler()
+async def callback_handler(call: CallbackQuery):
+    if call.data in ['shuffle']:
+        sql.upd_data(call.from_user.id, 'shuffle', False if sql.get_data(call.from_user.id, 'shuffle') else True)
+        shufflemoji = ':check_mark_button:' if sql.get_data(call.from_user.id, 'shuffle') else ':cross_mark:'
+        markup = InlineKeyboardMarkup()
+        shuffleB = InlineKeyboardButton(emojize(f'Перемешивание {shufflemoji}'), callback_data='shuffle')
+        markup.row(shuffleB)
+        await call.message.edit_reply_markup(markup)
 
 
 if __name__ == '__main__':
