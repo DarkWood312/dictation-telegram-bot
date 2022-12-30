@@ -1,12 +1,6 @@
-from aiogram import types
 from dotenv import load_dotenv
 from os import environ
-
-from emoji import emojize
-
 from sqdb import Sqdb
-
-separator = ' - '
 
 
 load_dotenv()

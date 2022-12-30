@@ -35,7 +35,7 @@ class Sqdb:
 
     def upd_data(self, user_id, key, value):
         with self.connection:
-            self.cursor.execute(f"UPDATE dict_users SET {key} = {value} WHERE user_id = {user_id}")
+            self.cursor.execute(f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
 
     def get_data(self, user_id, data):
         with self.connection:
