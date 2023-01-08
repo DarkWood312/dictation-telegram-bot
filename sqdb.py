@@ -19,14 +19,15 @@ class Sqdb:
             return if_exist[0]
 
     def add_user(self, user_id):
-        if not (Sqdb(environ['SQL_HOST'], environ['SQL_PASSWORD'], environ['SQL_PORT'], environ['SQL_DATABASE'],
-                     environ['SQL_USER']).is_user_exists(user_id)):
-            with self.connection:
+        with self.connection:
+            self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
+            if_exist = self.cursor.fetchone()[0]
+            if not if_exist:
                 self.cursor.execute(
                     f"INSERT INTO dict_users (user_id) VALUES ({user_id})")
                 return True
-        else:
-            return False
+            else:
+                return False
 
     def upd_dict(self, user_id, dict_):
         dict_ = str(dict_).replace("'", '"')
