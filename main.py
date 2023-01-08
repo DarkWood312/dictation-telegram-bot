@@ -31,9 +31,9 @@ async def cancel_state(state: FSMContext):
 
 
 async def options_markup(user_id):
-    is_shuffle = sql.get_data(user_id, 'shuffle')
-    separator = sql.get_data(user_id, 'separator')
-    order = sql.get_data(user_id, 'order_of_words')
+    is_shuffle = await sql.get_data(user_id, 'shuffle')
+    separator = await sql.get_data(user_id, 'separator')
+    order = await sql.get_data(user_id, 'order_of_words')
     shufflemoji = ':check_mark_button:' if is_shuffle else ':cross_mark:'
     markup = InlineKeyboardMarkup()
     shuffleB = InlineKeyboardButton(emojize(f'Перемешивание {shufflemoji}'), callback_data='shuffle')
@@ -62,7 +62,7 @@ async def OptionState(message: Message, state: FSMContext):
 @dp.message_handler(commands=['start'], state='*')
 async def start_message(message: Message, state: FSMContext):
     await cancel_state(state)
-    sql.add_user(message.from_user.id)
+    await sql.add_user(message.from_user.id)
     await message.answer('Hi!')
 
 
@@ -74,13 +74,14 @@ async def cancel(message: Message, state: FSMContext):
 
 @dp.message_handler(commands=['get'])
 async def get(message: Message):
-    separator = sql.get_data(message.from_user.id, 'separator')
-    await message.answer(sql.get_data(message.from_user.id, 'dict').replace(' *** ', separator))
+    separator = await sql.get_data(message.from_user.id, 'separator')
+    raw_dict = await sql.get_data(message.from_user.id, 'dict')
+    await message.answer(raw_dict.replace(' *** ', separator))
 
 
 @dp.message_handler(commands=['add'])
 async def add(message: Message):
-    separator = sql.get_data(message.from_user.id, 'separator')
+    separator = await sql.get_data(message.from_user.id, 'separator')
     await Dictation.adding_dict.set()
     await message.answer(
         f'*Пример:*\n`cat{separator}кот\ndog{separator}собака\nparrot{separator}попугай\nfox{separator}лиса\nwolf{separator}волк`',
@@ -90,13 +91,12 @@ async def add(message: Message):
 @dp.message_handler(state=Dictation.adding_dict)
 async def state_AddDict_adding_dict(message: Message, state: FSMContext):
     text = message.text.split('\n')
-    separator = sql.get_data(message.from_user.id, 'separator')
+    separator = await sql.get_data(message.from_user.id, 'separator')
     dict_ = {}
     for line in text:
         k, v = line.split(separator, 1)
         dict_[k] = v
-    # sql.upd_dict(message.from_user.id, str(dict_))
-    sql.upd_dict(message.from_user.id, message.text.replace(separator, ' *** '))
+    await sql.upd_dict(message.from_user.id, message.text.replace(separator, ' *** '))
     await message.answer(str(dict_))
     await message.answer('Добавлено')
     await state.finish()
@@ -105,9 +105,9 @@ async def state_AddDict_adding_dict(message: Message, state: FSMContext):
 @dp.message_handler(commands=['begin', 'run', 'dictate'], state='*')
 async def dictate(message: Message, state: FSMContext):
     await cancel_state(state)
-    dict_ = sql.get_data(message.from_user.id, 'dict')
+    dict_ = await sql.get_data(message.from_user.id, 'dict')
     dict_ = dict_.split('\n')
-    order = sql.get_data(message.from_user.id, 'order_of_words')
+    order = await sql.get_data(message.from_user.id, 'order_of_words')
     to_dictate = {}
     for line in dict_:
         k, v = line.split(' *** ', 1)
@@ -116,7 +116,7 @@ async def dictate(message: Message, state: FSMContext):
         else:
             to_dictate[k] = v
 
-    if sql.get_data(message.from_user.id, 'shuffle'):
+    if await sql.get_data(message.from_user.id, 'shuffle'):
         list_ = list(to_dictate.items())
         shuffle(list_)
         to_dictate = dict(list_)
@@ -167,7 +167,7 @@ async def options(message: Message, state: FSMContext):
 async def state_Options_separator(message: Message, state: FSMContext):
     data = await state.get_data()
     msg_id = data['msg_id']
-    sql.upd_data(message.from_user.id, 'separator', f' {message.text} ')
+    await sql.upd_data(message.from_user.id, 'separator', f' {message.text} ')
     await message.answer(f"Новый разделитель: ' {hcode(message.text)} '", parse_mode=ParseMode.HTML)
     await bot.edit_message_reply_markup(chat_id=message.from_user.id, message_id=msg_id,
                                         reply_markup=await options_markup(message.from_user.id))
@@ -178,15 +178,15 @@ async def state_Options_separator(message: Message, state: FSMContext):
 async def callback_handler(call: CallbackQuery, state: FSMContext):
     if call.data in ['shuffle', 'separator', 'order']:
         if call.data == 'shuffle':
-            sql.upd_data(call.from_user.id, 'shuffle', False if sql.get_data(call.from_user.id, 'shuffle') else True)
+            await sql.upd_data(call.from_user.id, 'shuffle', False if await sql.get_data(call.from_user.id, 'shuffle') else True)
             await call.message.edit_reply_markup(await options_markup(call.from_user.id))
         elif call.data == 'separator':
             await call.message.answer('Введите новый разделитель')
             await state.update_data(msg_id=call.message.message_id)
             await Options.separator.set()
         elif call.data == 'order':
-            sql.upd_data(call.from_user.id, 'order_of_words',
-                         False if sql.get_data(call.from_user.id, 'order_of_words') else True)
+            await sql.upd_data(call.from_user.id, 'order_of_words',
+                         False if await sql.get_data(call.from_user.id, 'order_of_words') else True)
             await call.message.edit_reply_markup(await options_markup(call.from_user.id))
 
 

@@ -1,26 +1,34 @@
 from os import environ
 
 import psycopg2
+from psycopg2 import pool
 
 
 class Sqdb:
     def __init__(self, host, password, port, database, user):
-        self.connection = psycopg2.connect(host=host,
-                                           password=password,
-                                           port=port,
-                                           database=database,
-                                           user=user)
+        # self.connection = psycopg2.connect(host=host,
+        #                                    password=password,
+        #                                    port=port,
+        #                                    database=database,
+        #                                    user=user)
+        self.postgresql_pool = psycopg2.pool.ThreadedConnectionPool(1, 20,
+                                                                    host=host,
+                                                                    password=password,
+                                                                    port=port,
+                                                                    database=database,
+                                                                    user=user)
+        self.connection = self.postgresql_pool.getconn()
         self.cursor = self.connection.cursor()
 
-    def is_user_exists(self, user_id):
-        with self.cursor as cur:
-            cur.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
-            if_exist = cur.fetchone()
+    async def is_user_exists(self, user_id):
+        with self.connection:
+            self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
+            if_exist = self.cursor.fetchone()
             return if_exist[0]
 
-    def add_user(self, user_id):
-        with self.cursor as cur:
-            cur.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
+    async def add_user(self, user_id):
+        with self.connection:
+            self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
             if_exist = self.cursor.fetchone()[0]
             if not if_exist:
                 self.cursor.execute(
@@ -29,16 +37,17 @@ class Sqdb:
             else:
                 return False
 
-    def upd_dict(self, user_id, dict_):
+    async def upd_dict(self, user_id, dict_):
         dict_ = str(dict_).replace("'", '"')
-        with self.cursor as cur:
-            cur.execute(f"""UPDATE dict_users SET dict = '{dict_}' WHERE user_id = {user_id}""")
+        with self.connection:
+            self.cursor.execute(f"""UPDATE dict_users SET dict = '{dict_}' WHERE user_id = {user_id}""")
 
-    def upd_data(self, user_id, key, value):
-        with self.cursor as cur:
-            cur.execute(f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
+    async def upd_data(self, user_id, key, value):
+        with self.connection:
+            self.cursor.execute(
+                f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
 
-    def get_data(self, user_id, data):
-        with self.cursor as cur:
-            cur.execute(f'SELECT {data} FROM dict_users WHERE user_id = {user_id}')
+    async def get_data(self, user_id, data):
+        with self.connection:
+            self.cursor.execute(f'SELECT {data} FROM dict_users WHERE user_id = {user_id}')
             return self.cursor.fetchone()[0]
