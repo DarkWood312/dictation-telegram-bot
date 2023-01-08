@@ -13,14 +13,14 @@ class Sqdb:
         self.cursor = self.connection.cursor()
 
     def is_user_exists(self, user_id):
-        with self.connection:
-            self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
-            if_exist = self.cursor.fetchone()
+        with self.cursor as cur:
+            cur.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
+            if_exist = cur.fetchone()
             return if_exist[0]
 
     def add_user(self, user_id):
-        with self.connection:
-            self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
+        with self.cursor as cur:
+            cur.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
             if_exist = self.cursor.fetchone()[0]
             if not if_exist:
                 self.cursor.execute(
@@ -31,14 +31,14 @@ class Sqdb:
 
     def upd_dict(self, user_id, dict_):
         dict_ = str(dict_).replace("'", '"')
-        with self.connection:
-            self.cursor.execute(f"""UPDATE dict_users SET dict = '{dict_}' WHERE user_id = {user_id}""")
+        with self.cursor as cur:
+            cur.execute(f"""UPDATE dict_users SET dict = '{dict_}' WHERE user_id = {user_id}""")
 
     def upd_data(self, user_id, key, value):
-        with self.connection:
-            self.cursor.execute(f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
+        with self.cursor as cur:
+            cur.execute(f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
 
     def get_data(self, user_id, data):
-        with self.connection:
-            self.cursor.execute(f'SELECT {data} FROM dict_users WHERE user_id = {user_id}')
+        with self.cursor as cur:
+            cur.execute(f'SELECT {data} FROM dict_users WHERE user_id = {user_id}')
             return self.cursor.fetchone()[0]
