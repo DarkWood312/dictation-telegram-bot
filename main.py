@@ -75,11 +75,18 @@ async def OptionState(message: Message, state: FSMContext):
         await message.answer('no state')
 
 
-@dp.message_handler(commands=['start'], state='*')
+@dp.message_handler(commands=['start', 'info'], state='*')
 async def start_message(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id)
-    await message.answer('Hi!')
+    await message.answer(
+'''/start | /info - *Получить это информационное сообщение*
+/cancel - *Отмена действия*
+/add - *Добавить новый словарь(диктант)*
+/run | /begin | /dictate - *Запустить словарь(диктант)*
+/get - *Получить текущий словарь(диктант)*
+/options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
+''', parse_mode=ParseMode.MARKDOWN)
 
 
 @dp.message_handler(commands=['cancel'], state='*')
@@ -88,58 +95,96 @@ async def cancel(message: Message, state: FSMContext):
     await message.answer('Действие отменено', reply_markup=types.ReplyKeyboardRemove())
 
 
-@dp.message_handler(commands=['get'])
-async def get(message: Message):
+@dp.message_handler(commands=['get'], state='*')
+async def get(message: Message, state: FSMContext):
+    await cancel_state(state)
     separator = await sql.get_data(message.from_user.id, 'separator')
     raw_dict = await sql.get_data(message.from_user.id, 'dict')
-    await message.answer(raw_dict.replace(' *** ', separator))
+    if raw_dict is None:
+        await message.answer('Словарь пустой!\nДобавьте словарь командой /add')
+    else:
+        await message.answer(raw_dict.replace(' *** ', separator))
 
 
-@dp.message_handler(commands=['add'])
-async def add(message: Message):
+@dp.message_handler(commands=['add'], state='*')
+async def add(message: Message, state: FSMContext):
+    await cancel_state(state)
     separator = await sql.get_data(message.from_user.id, 'separator')
+    order_of_words = bool(await sql.get_data(message.from_user.id, 'order_of_words'))
     await Dictation.adding_dict.set()
-    await message.answer(
-        f'*Пример:*\n`cat{separator}кот\ndog{separator}собака\nparrot{separator}попугай\nfox{separator}лиса\nwolf{separator}волк`',
-        parse_mode=ParseMode.MARKDOWN)
-
-
-@dp.message_handler(state=Dictation.adding_dict)
-async def state_AddDict_adding_dict(message: Message, state: FSMContext):
-    text = message.text.split('\n')
-    separator = await sql.get_data(message.from_user.id, 'separator')
-    dict_ = {}
-    for line in text:
-        k, v = line.split(separator, 1)
-        dict_[k] = v
-    await sql.upd_dict(message.from_user.id, message.text.replace(separator, ' *** '))
-    await message.answer(str(dict_))
-    await message.answer('Добавлено')
-    await state.finish()
+    example_dict = {'cat': 'кот', 'dog': 'собака', 'parrot': 'попугай', 'fox': 'лиса', 'wolf': 'волк'}
+    example_list = example_dict.items()
+    lines = []
+    for line in example_list:
+        if order_of_words:
+            lines.append(f'{line[1]}{separator}{line[0]}')
+        else:
+            lines.append(f'{line[0]}{separator}{line[1]}')
+    await message.answer('<b>Пример:</b>\n<code>' + '\n'.join(lines) + '</code>', parse_mode=ParseMode.HTML)
 
 
 @dp.message_handler(commands=['begin', 'run', 'dictate'], state='*')
 async def dictate(message: Message, state: FSMContext):
     await cancel_state(state)
     dict_ = await sql.get_data(message.from_user.id, 'dict')
-    dict_ = dict_.split('\n')
-    order = await sql.get_data(message.from_user.id, 'order_of_words')
-    to_dictate = {}
-    for line in dict_:
-        k, v = line.split(' *** ', 1)
-        if order:
-            to_dictate[v] = k
-        else:
-            to_dictate[k] = v
+    if dict_ is None:
+        await message.answer('Словарь пустой!\nДобавьте словарь командой /add')
+    else:
+        dict_ = dict_.split('\n')
+        order = await sql.get_data(message.from_user.id, 'order_of_words')
+        to_dictate = {}
+        for line in dict_:
+            k, v = line.split(' *** ', 1)
+            if order:
+                to_dictate[v] = k
+            else:
+                to_dictate[k] = v
 
-    if await sql.get_data(message.from_user.id, 'shuffle'):
-        list_ = list(to_dictate.items())
-        shuffle(list_)
-        to_dictate = dict(list_)
+        if await sql.get_data(message.from_user.id, 'shuffle'):
+            list_ = list(to_dictate.items())
+            shuffle(list_)
+            to_dictate = dict(list_)
 
-    await state.update_data(to_dictate=to_dictate, count=0, correct=0, incorrect=0)
-    await message.answer('1. ' + list(to_dictate.keys())[0])
-    await Dictation.dictate.set()
+        await state.update_data(to_dictate=to_dictate, count=0, correct=0, incorrect=0)
+        await message.answer('1. ' + list(to_dictate.keys())[0])
+        await Dictation.dictate.set()
+
+
+@dp.message_handler(commands=['options', 'settings'], state='*')
+async def options(message: Message, state: FSMContext):
+    await cancel_state(state)
+    await message.answer(f"{hbold('Настройки:')}\n", parse_mode=ParseMode.HTML,
+                         reply_markup=await options_markup(message.from_user.id))
+
+
+@dp.message_handler(state=Options.separator)
+async def state_Options_separator(message: Message, state: FSMContext):
+    data = await state.get_data()
+    msg_id = data['msg_id']
+    await sql.upd_data(message.from_user.id, 'separator', f' {message.text} ')
+    await message.answer(f"Новый разделитель: ' {hcode(message.text)} '", parse_mode=ParseMode.HTML)
+    await bot.edit_message_reply_markup(chat_id=message.from_user.id, message_id=msg_id,
+                                        reply_markup=await options_markup(message.from_user.id))
+    await cancel_state(state)
+
+
+@dp.message_handler(state=Dictation.adding_dict)
+async def state_AddDict_adding_dict(message: Message, state: FSMContext):
+    try:
+        text = message.text.split('\n')
+        separator = await sql.get_data(message.from_user.id, 'separator')
+        dict_ = {}
+        for line in text:
+            k, v = line.split(separator, 1)
+            dict_[k] = v
+        await sql.upd_dict(message.from_user.id, message.text.replace(separator, ' *** '))
+        # await message.answer(str(dict_))
+        await message.answer('Добавлено. (Для просмотра - /get, Для запуска - /run)')
+    except ValueError:
+        await message.answer('Ошибка! Смотреть пример словаря!')
+        await message.answer('Действие отменено.')
+    finally:
+        await state.finish()
 
 
 @dp.message_handler(state=Dictation.dictate)
@@ -170,24 +215,6 @@ async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
     else:
         await message.answer(f'{count + 1}. {list(to_dictate.keys())[count]}')
         await Dictation.dictate.set()
-
-
-@dp.message_handler(commands=['options'], state='*')
-async def options(message: Message, state: FSMContext):
-    await cancel_state(state)
-    await message.answer(f"{hbold('Настройки:')}\n", parse_mode=ParseMode.HTML,
-                         reply_markup=await options_markup(message.from_user.id))
-
-
-@dp.message_handler(state=Options.separator)
-async def state_Options_separator(message: Message, state: FSMContext):
-    data = await state.get_data()
-    msg_id = data['msg_id']
-    await sql.upd_data(message.from_user.id, 'separator', f' {message.text} ')
-    await message.answer(f"Новый разделитель: ' {hcode(message.text)} '", parse_mode=ParseMode.HTML)
-    await bot.edit_message_reply_markup(chat_id=message.from_user.id, message_id=msg_id,
-                                        reply_markup=await options_markup(message.from_user.id))
-    await cancel_state(state)
 
 
 @dp.callback_query_handler()

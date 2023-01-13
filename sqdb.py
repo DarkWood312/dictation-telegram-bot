@@ -26,7 +26,7 @@ class Sqdb:
     async def add_user(self, user_id):
         with self.connection:
             self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
-            if_exist = self.cursor.fetchone()[0]
+            if_exist = bool(self.cursor.fetchone()[0])
             if not if_exist:
                 self.cursor.execute(
                     f"INSERT INTO dict_users (user_id) VALUES ({user_id})")
