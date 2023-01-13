@@ -6,18 +6,18 @@ from psycopg2 import pool
 
 class Sqdb:
     def __init__(self, host, password, port, database, user):
-        # self.connection = psycopg2.connect(host=host,
-        #                                    password=password,
-        #                                    port=port,
-        #                                    database=database,
-        #                                    user=user)
-        self.postgresql_pool = psycopg2.pool.ThreadedConnectionPool(1, 20,
-                                                                    host=host,
-                                                                    password=password,
-                                                                    port=port,
-                                                                    database=database,
-                                                                    user=user)
-        self.connection = self.postgresql_pool.getconn()
+        self.connection = psycopg2.connect(host=host,
+                                           password=password,
+                                           port=port,
+                                           database=database,
+                                           user=user)
+        # self.postgresql_pool = psycopg2.pool.ThreadedConnectionPool(1, 20,
+        #                                                             host=host,
+        #                                                             password=password,
+        #                                                             port=port,
+        #                                                             database=database,
+        #                                                             user=user)
+        # self.connection = self.postgresql_pool.getconn()
         self.cursor = self.connection.cursor()
 
     async def is_user_exists(self, user_id):
