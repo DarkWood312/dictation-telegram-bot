@@ -1,7 +1,4 @@
-from os import environ
-
 import psycopg2
-from psycopg2 import pool
 
 
 class Sqdb:
@@ -46,6 +43,11 @@ class Sqdb:
         with self.connection:
             self.cursor.execute(
                 f"""UPDATE dict_users SET {key} = {f"'{value}'" if isinstance(key, str) else value} WHERE user_id = {user_id}""")
+
+    async def get_admins(self):
+        with self.connection:
+            self.cursor.execute('SELECT user_id FROM dict_users WHERE admin = TRUE')
+            return [i[0] for i in self.cursor.fetchall()]
 
     async def get_data(self, user_id, data):
         with self.connection:

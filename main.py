@@ -3,15 +3,31 @@ from random import shuffle
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import filters
 from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.markdown import hcode, hbold
 from emoji import emojize
-from config import token, owner_id, sql
+from config import token, sql
 
 logging.basicConfig(level=logging.DEBUG)
 bot = Bot(token=token)
 dp = Dispatcher(bot, storage=MemoryStorage())
+
+
+class IsAdminFilter(filters.BoundFilter):
+    key = 'is_admin'
+
+    def __init__(self, is_admin):
+        self.is_admin = is_admin
+
+    async def check(self, message: Message):
+        admins = await sql.get_admins()
+        user = message.from_user.id
+        return user in admins
+
+
+dp.filters_factory.bind(IsAdminFilter)
 
 
 class Dictation(StatesGroup):
@@ -46,7 +62,7 @@ async def options_markup(user_id):
     return markup
 
 
-@dp.message_handler(commands=['gs', 'ds'], state='*', user_id=owner_id)
+@dp.message_handler(commands=['gs', 'ds'], state='*', is_admin=True)
 async def OptionState(message: Message, state: FSMContext):
     state_ = await state.get_state()
     if state_ is not None:
@@ -178,7 +194,8 @@ async def state_Options_separator(message: Message, state: FSMContext):
 async def callback_handler(call: CallbackQuery, state: FSMContext):
     if call.data in ['shuffle', 'separator', 'order']:
         if call.data == 'shuffle':
-            await sql.upd_data(call.from_user.id, 'shuffle', False if await sql.get_data(call.from_user.id, 'shuffle') else True)
+            await sql.upd_data(call.from_user.id, 'shuffle',
+                               False if await sql.get_data(call.from_user.id, 'shuffle') else True)
             await call.message.edit_reply_markup(await options_markup(call.from_user.id))
         elif call.data == 'separator':
             await call.message.answer('Введите новый разделитель')
@@ -186,7 +203,7 @@ async def callback_handler(call: CallbackQuery, state: FSMContext):
             await Options.separator.set()
         elif call.data == 'order':
             await sql.upd_data(call.from_user.id, 'order_of_words',
-                         False if await sql.get_data(call.from_user.id, 'order_of_words') else True)
+                               False if await sql.get_data(call.from_user.id, 'order_of_words') else True)
             await call.message.edit_reply_markup(await options_markup(call.from_user.id))
 
 
