@@ -25,6 +25,7 @@ async def menu_markup():
     start_button = KeyboardButton(emojize('Начало диктанта:woman_teacher_light_skin_tone:'))
     add_button = KeyboardButton(emojize('Добавить диктант:plus:'))
     get_button = KeyboardButton(emojize('Получить текущий диктант:England:'))
+    translate_button = KeyboardButton(emojize('Автоматически перевести диктант:high_voltage:'))     # TODO DICT_TRANSLATION
     options_button = KeyboardButton(emojize('Настройки:gear:'))
-    markup.row(start_button, get_button).row(add_button).row(options_button)
+    markup.row(start_button, add_button).row(get_button).row(options_button)
     return markup

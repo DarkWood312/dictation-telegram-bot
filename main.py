@@ -3,13 +3,14 @@ from random import shuffle
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext, filters
-from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, \
+    ReplyKeyboardMarkup
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.markdown import hcode, hbold
-from emoji import emojize, demojize
-from config import token, sql
+from emoji import demojize, emojize
+from config import token, sql, ya
 from keyboards import options_markup, menu_markup
-from defs import cancel_state
+from defs import cancel_state, dict_transformation, dictation_statistics
 
 logging.basicConfig(level=logging.DEBUG)
 bot = Bot(token=token)
@@ -74,14 +75,15 @@ async def start_message(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
                        message.from_user.last_name)
-    await message.answer(
-        '''/start | /info - *Получить это информационное сообщение*
-/cancel - *Отмена действия*
-/add - *Добавить новый словарь(диктант)*
-/run | /begin | /dictate - *Запустить словарь(диктант)*
-/get - *Получить текущий словарь(диктант)*
-/options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
-''', parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
+#     await message.answer(
+#         '''/start | /info - *Получить это информационное сообщение*
+# /cancel - *Отмена действия*
+# /add - *Добавить новый диктант*
+# /run | /begin | /dictate - *Запустить диктант*
+# /get - *Получить текущий диктант*
+# /options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
+# ''' , parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
+    await message.answer('*Добро пожаловать!*\n\n*Подсказки:*\n_Бот автоматически переведёт присланный ему текст_', reply_markup=await menu_markup(), parse_mode=ParseMode.MARKDOWN)
 
 
 @dp.message_handler(commands=['cancel'], state='*')
@@ -96,7 +98,7 @@ async def get(message: Message, state: FSMContext):
     separator = await sql.get_data(message.from_user.id, 'separator')
     raw_dict = await sql.get_data(message.from_user.id, 'dict')
     if raw_dict is None:
-        await message.answer('Словарь пустой!\nДобавьте словарь командой /add')
+        await message.answer('Словарь пустой!\nДобавьте диктант командой /add')
     else:
         await message.answer(raw_dict.replace(' *** ', separator))
 
@@ -126,18 +128,11 @@ async def dictate(message: Message, state: FSMContext):
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
                        message.from_user.last_name)
     dict_ = await sql.get_data(message.from_user.id, 'dict')
+    order = await sql.get_data(message.from_user.id, 'order_of_words')
     if dict_ is None:
-        await message.answer('Словарь пустой!\nДобавьте словарь командой /add')
+        await message.answer('Словарь пустой!\nДобавьте диктант командой /add')
     else:
-        dict_ = dict_.split('\n')
-        order = await sql.get_data(message.from_user.id, 'order_of_words')
-        to_dictate = {}
-        for line in dict_:
-            k, v = line.split(' *** ', 1)
-            if order:
-                to_dictate[v] = k
-            else:
-                to_dictate[k] = v
+        to_dictate = await dict_transformation(dict_, order)
 
         if await sql.get_data(message.from_user.id, 'shuffle'):
             list_ = list(to_dictate.items())
@@ -145,8 +140,15 @@ async def dictate(message: Message, state: FSMContext):
             to_dictate = dict(list_)
         list_of_dict = list(to_dictate.keys())
         await state.update_data(to_dictate=to_dictate, count=0, correct=0, incorrect=0)
-        await message.answer(f'1 / {len(list_of_dict)}) {list_of_dict[0]}')
+        stop_markup = ReplyKeyboardMarkup(resize_keyboard=True).row(KeyboardButton(emojize('Остановить:stop_sign:')))
+        await message.answer(f'<b>1/{len(list_of_dict)})</b> <code>{list_of_dict[0]}</code>', reply_markup=stop_markup, parse_mode=ParseMode.HTML)
         await Dictation.dictate.set()
+
+
+@dp.message_handler(commands=['make'], state='*')   # TODO DICT_TRANSLATION
+async def make_dict(message: Message, state: FSMContext):
+    await cancel_state(state)
+    await message.answer('None!')
 
 
 @dp.message_handler(commands=['options', 'settings'], state='*')
@@ -165,29 +167,31 @@ async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
     to_dictate = data['to_dictate']
     list_of_dict = list(to_dictate.keys())
     items = list(to_dictate.items())
-    request_answer = message.text.lower().strip()
-    answer = items[count][1].strip()
-
-    if request_answer == answer:
-        await message.answer('Правильно!')
-        correct += 1
-    else:
-        await message.answer(f'Неправильно --> {items[count][1].strip()}')
-        incorrect += 1
-    count += 1
-
-    await state.update_data(count=count, correct=correct, incorrect=incorrect)
-    if len(items) == count:
-        await message.answer(
-            f'*Статистика:*\n_Всего_ - `{count}`\n_Правильных_ - `{correct}`\n_Неправильных_ - `{incorrect}`\n_Процент_ - `{round(correct / count * 100, 2)}%`',
-            parse_mode=ParseMode.MARKDOWN)
+    if message.text == emojize('Остановить:stop_sign:'):
+        await message.answer(await dictation_statistics(count, correct, incorrect), parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
         await state.finish()
     else:
-        await message.answer(f'{count + 1} / {len(list_of_dict)}) {list_of_dict[count]}')
-        await Dictation.dictate.set()
+        request_answer = message.text.lower().strip()
+        answer = items[count][1].strip()
+
+        if request_answer == answer:
+            await message.answer('Правильно!')
+            correct += 1
+        else:
+            await message.answer(f'Неправильно --> {items[count][1].strip()}')
+            incorrect += 1
+        count += 1
+        if len(items) == count:
+            await message.answer(await dictation_statistics(count, correct, incorrect), parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=await menu_markup())
+            await state.finish()
+        else:
+            await state.update_data(count=count, correct=correct, incorrect=incorrect)
+            await message.answer(f'<b>{count + 1}/{len(list_of_dict)})</b> <code>{list_of_dict[count]}</code>', parse_mode=ParseMode.HTML)
+            await Dictation.dictate.set()
 
 
-@dp.message_handler(contain=['Начало диктанта', 'Добавить диктант', 'Получить текущий диктант', 'Настройки'])
+@dp.message_handler(contain=['Начало диктанта', 'Добавить диктант', 'Получить текущий диктант', 'Настройки', 'Автоматически перевести диктант'])    # TODO DICT_TRANSLATION
 async def menu_messages(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
@@ -199,6 +203,8 @@ async def menu_messages(message: Message, state: FSMContext):
         await add(message, state)
     elif 'Получить текущий диктант' in msg:
         await get(message, state)
+    # elif 'Автоматически перевести диктант' in msg:
+    #     await make_dict(message, state)
     elif 'Настройки' in msg:
         await options(message, state)
 
@@ -230,6 +236,23 @@ async def state_AddDict_adding_dict(message: Message, state: FSMContext):
         await message.answer('Действие отменено.')
     finally:
         await state.finish()
+
+
+@dp.message_handler(state='*')
+async def other_messages(message: Message, state: FSMContext):
+    msg = message.text
+    if msg == emojize('Остановить:stop_sign:'):
+        data = await state.get_data()
+        count = data['count']
+        correct = data['correct']
+        incorrect = data['incorrect']
+        to_dictate = data['to_dictate']
+
+    detectedLanguage = await ya.detect(msg)
+    if detectedLanguage == 'en':
+        await message.answer(hcode(await ya.translate(msg, 'ru', 'en')), parse_mode=ParseMode.HTML)
+    elif detectedLanguage == 'ru':
+        await message.answer(hcode(await ya.translate(msg, 'en', 'ru')), parse_mode=ParseMode.HTML)
 
 
 @dp.callback_query_handler()

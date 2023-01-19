@@ -8,21 +8,117 @@ async def cancel_state(state: FSMContext):
         await state.finish()
 
 
-async def translate(text: str | list, target_language='ru', source_language='en', API_KEY='AQVNxfz109UVOMwPQzQr83ow1QbLbtdGRcyW7lGF', folder_id='b1gvvk7vrsehk1e13vum'):
-    body = {
-        "targetLanguageCode": target_language,
-        "sourceLanguageCode": source_language,
-        "texts": text,
-        "folderId": folder_id,
-    }
+async def dictation_statistics(count, correct, incorrect):
+    if count == 0:
+        percents = 0
+        mark = 'None'
+    else:
+        percents = round(correct / count * 100, 2)
+        if percents >= 100:
+            mark = '5'
+        elif percents >= 95:
+            mark = '5-'
+        elif percents >= 90:
+            mark = '4+'
+        elif percents >= 80:
+            mark = '4'
+        elif percents >= 75:
+            mark = '4-'
+        elif percents >= 70:
+            mark = '3+'
+        elif percents >= 60:
+            mark = '3'
+        elif percents >= 55:
+            mark = '3-'
+        elif percents >= 50:
+            mark = '2+'
+        elif percents >= 40:
+            mark = '2'
+        elif percents >= 35:
+            mark = '2-'
+        elif percents >= 30:
+            mark = '1+'
+        elif percents >= 20:
+            mark = '1'
+        elif percents >= 15:
+            mark = '1-'
+        elif percents >= 10:
+            mark = '0+'
+        else:
+            mark = '(⊙ˍ⊙)'
+    return f'*Статистика:*\n_Всего_ - `{count}`\n_Правильных_ - `{correct}`\n_Неправильных_ - `{incorrect}`\n_Процент_ - `{percents}%`\n_Оценка_ - `{mark}`'
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Api-Key {API_KEY}"
-    }
 
-    response = requests.post('https://translate.api.cloud.yandex.net/translate/v2/translate',
-                             json=body,
-                             headers=headers
-                             )
-    return response.json()
+async def dict_transformation(dict_, order) -> dict:
+    dict_ = dict_.split('\n')
+    to_dictate = {}
+
+    for line in dict_:
+        k, v = line.split(' *** ', 1)
+        if order:
+            to_dictate[v] = k
+        else:
+            to_dictate[k] = v
+
+    return to_dictate
+
+
+class YandexTranslator:
+    def __init__(self, folder_id, API_KEY):
+        self.folder_id = folder_id
+        self.headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Api-Key {API_KEY}"
+        }
+
+    async def translate(self, text: str | list, targetLanguage: str, sourceLanguage: str = None) -> dict:
+        body = {
+            "texts": text,
+            "folderId": self.folder_id,
+            "targetLanguageCode": targetLanguage
+        }
+        if sourceLanguage is not None:
+            body['sourceLanguageCode'] = sourceLanguage
+
+        response = requests.post('https://translate.api.cloud.yandex.net/translate/v2/translate',
+                                 json=body,
+                                 headers=self.headers
+                                 )
+        result = response.json()['translations']
+        if isinstance(text, str):
+            return result[0]['text']
+        else:
+            return result
+
+    async def detect(self, text: str, languageCodeHints: list | tuple = ('en', 'ru')) -> str:
+        body = {
+            "folderId": self.folder_id,
+            "text": text
+        }
+
+        if languageCodeHints is not None:
+            body['languageCodeHints'] = languageCodeHints
+
+        response = requests.post('https://translate.api.cloud.yandex.net/translate/v2/detect',
+                                 json=body,
+                                 headers=self.headers
+                                 )
+        print(response.json())
+        return response.json()['languageCode']
+
+    async def auto_list_translation(self, to_translate: list, sourceLanguage=None) -> dict:
+        l = []
+        translationDict = {}
+
+        if sourceLanguage is None:
+            sourceLanguage = await self.detect(to_translate[0])
+
+        targetLanguage = 'ru' if sourceLanguage == 'en' else 'en'
+        translationList = (await self.translate(to_translate, targetLanguage))
+
+        l.append([i['text'] for i in translationList])
+
+        for i in range(len(to_translate)):
+            translationDict[to_translate[i]] = translationList[i]['text']
+
+        return translationDict
