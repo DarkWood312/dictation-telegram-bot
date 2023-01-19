@@ -8,13 +8,6 @@ class Sqdb:
                                            port=port,
                                            database=database,
                                            user=user)
-        # self.postgresql_pool = psycopg2.pool.ThreadedConnectionPool(1, 20,
-        #                                                             host=host,
-        #                                                             password=password,
-        #                                                             port=port,
-        #                                                             database=database,
-        #                                                             user=user)
-        # self.connection = self.postgresql_pool.getconn()
         self.cursor = self.connection.cursor()
 
     async def is_user_exists(self, user_id):
@@ -23,15 +16,17 @@ class Sqdb:
             if_exist = self.cursor.fetchone()
             return if_exist[0]
 
-    async def add_user(self, user_id):
+    async def add_user(self, user_id, username, user_name, user_surname):
         with self.connection:
             self.cursor.execute(f"SELECT COUNT(*) from dict_users WHERE user_id = {user_id}")
             if_exist = bool(self.cursor.fetchone()[0])
             if not if_exist:
                 self.cursor.execute(
-                    f"INSERT INTO dict_users (user_id) VALUES ({user_id})")
+                    f"INSERT INTO dict_users (user_id, username, user_name, user_surname) VALUES ({user_id}, '{username}', '{user_name}', '{user_surname}')")
                 return True
             else:
+                self.cursor.execute(
+                    f"UPDATE dict_users set username = '{username}', user_name = '{user_name}', user_surname = '{user_surname}' WHERE user_id = {user_id}")
                 return False
 
     async def upd_dict(self, user_id, dict_):
