@@ -1,5 +1,6 @@
 import requests
 from aiogram.dispatcher import FSMContext
+from io import BytesIO
 
 
 async def cancel_state(state: FSMContext):
@@ -103,7 +104,6 @@ class YandexTranslator:
                                  json=body,
                                  headers=self.headers
                                  )
-        print(response.json())
         return response.json()['languageCode']
 
     async def auto_list_translation(self, to_translate: list, sourceLanguage=None) -> dict:
@@ -122,3 +122,23 @@ class YandexTranslator:
             translationDict[to_translate[i]] = translationList[i]['text']
 
         return translationDict
+
+    async def synthesize(self, text: str, speed=1.0, language: str = 'en-US', voice: str = 'john',
+                         emotion: str = 'neutral') -> BytesIO:
+        if language == 'ru-RU':
+            voice = 'alena'
+        elif language == 'en-US':
+            speed = 0.9
+        body = {
+            "folderId": self.folder_id,
+            "text": text,
+            'lang': language,
+            'voice': voice,
+            'emotion': emotion,
+            'speed': speed
+        }
+        headers = self.headers
+        headers.pop('Content-Type', None)
+        response = requests.post('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize', data=body,
+                                 headers=headers)
+        return BytesIO(response.content)

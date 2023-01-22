@@ -25,7 +25,13 @@ async def menu_markup():
     start_button = KeyboardButton(emojize('Начало диктанта:woman_teacher_light_skin_tone:'))
     add_button = KeyboardButton(emojize('Добавить диктант:plus:'))
     get_button = KeyboardButton(emojize('Получить текущий диктант:England:'))
-    translate_button = KeyboardButton(emojize('Автоматически перевести диктант:high_voltage:'))     # TODO DICT_TRANSLATION
+    translate_button = KeyboardButton(emojize('Автоматически перевести диктант:high_voltage:'))  # TODO DICT_TRANSLATION
+    synthesize_button = KeyboardButton(emojize('Синтез:speaker_high_volume:'))
     options_button = KeyboardButton(emojize('Настройки:gear:'))
-    markup.row(start_button, add_button).row(get_button).row(options_button)
+    markup.row(start_button, add_button).row(get_button).row(synthesize_button).row(options_button)
+    return markup
+
+
+async def stop_markup():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True).row(KeyboardButton(emojize('Остановить:stop_sign:')))
     return markup
