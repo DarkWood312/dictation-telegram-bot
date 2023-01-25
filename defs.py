@@ -2,11 +2,26 @@ import requests
 from aiogram.dispatcher import FSMContext
 from io import BytesIO
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
+from aiogram.utils.markdown import hcode
+
 
 async def cancel_state(state: FSMContext):
     state_ = await state.get_state()
     if state_ is not None:
         await state.finish()
+
+
+async def translate(message, text, ya, Synthesize):
+    detectedLanguage = await ya.detect(text)
+    translatedText = None
+    if detectedLanguage == 'en':
+        translatedText = await ya.translate(text, 'ru', 'en')
+    elif detectedLanguage == 'ru':
+        translatedText = await ya.translate(text, 'en', 'ru')
+    markup = InlineKeyboardMarkup().row(InlineKeyboardButton('Синтезировать', callback_data=translatedText))
+    await message.answer(hcode(translatedText), parse_mode=ParseMode.HTML, reply_markup=markup)
+    await Synthesize.text.set()
 
 
 async def dictation_statistics(count, correct, incorrect):
@@ -142,3 +157,9 @@ class YandexTranslator:
         response = requests.post('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize', data=body,
                                  headers=headers)
         return BytesIO(response.content)
+
+    async def recognize(self, audio: BytesIO, language: str = 'ru-RU'):
+        response = requests.post(
+            f'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId={self.folder_id}&lang={language}',
+            headers=self.headers, data=audio).json()
+        return response['result']

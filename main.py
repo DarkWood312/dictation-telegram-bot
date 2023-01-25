@@ -1,16 +1,19 @@
 import logging
+from io import BytesIO
 from random import shuffle
+
+import requests
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext, filters
 from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, \
-    ReplyKeyboardMarkup, InputFile
+    ReplyKeyboardMarkup, InputFile, ContentType
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.markdown import hcode, hbold
 from emoji import demojize, emojize
 from config import token, sql, ya
 from keyboards import options_markup, menu_markup, stop_markup
-from defs import cancel_state, dict_transformation, dictation_statistics
+from defs import cancel_state, dict_transformation, dictation_statistics, translate
 
 logging.basicConfig(level=logging.DEBUG)
 bot = Bot(token=token)
@@ -74,20 +77,32 @@ async def OptionState(message: Message, state: FSMContext):
         await message.answer('no state')
 
 
+@dp.message_handler(content_types=ContentType.VOICE, state='*')
+async def other_audio(message: Message, state: FSMContext):
+    await cancel_state(state)
+    file_path = (await message.voice.get_file())['file_path']
+    link = f'https://api.telegram.org/file/bot{token}/{file_path}'
+    file_bytes = requests.get(link).content
+    recognized_text = await ya.recognize(BytesIO(file_bytes))
+    await message.answer(f'Распознанный текст: <code>{recognized_text}</code>', parse_mode=ParseMode.HTML)
+    await translate(message, recognized_text, ya, Synthesize)
+
+
 @dp.message_handler(commands=['start', 'info'], state='*')
 async def start_message(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
                        message.from_user.last_name)
-#     await message.answer(
-#         '''/start | /info - *Получить это информационное сообщение*
-# /cancel - *Отмена действия*
-# /add - *Добавить новый диктант*
-# /run | /begin | /dictate - *Запустить диктант*
-# /get - *Получить текущий диктант*
-# /options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
-# ''' , parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
-    await message.answer('*Добро пожаловать!*\n\n*Подсказки:*\n_Бот автоматически переведёт присланный ему текст_', reply_markup=await menu_markup(), parse_mode=ParseMode.MARKDOWN)
+    #     await message.answer(
+    #         '''/start | /info - *Получить это информационное сообщение*
+    # /cancel - *Отмена действия*
+    # /add - *Добавить новый диктант*
+    # /run | /begin | /dictate - *Запустить диктант*
+    # /get - *Получить текущий диктант*
+    # /options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
+    # ''' , parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
+    await message.answer('*Добро пожаловать!*\n\n*Подсказки:*\n_Бот автоматически переведёт присланный ему текст или аудио_',
+                         reply_markup=await menu_markup(), parse_mode=ParseMode.MARKDOWN)
 
 
 @dp.message_handler(commands=['cancel'], state='*')
@@ -144,11 +159,12 @@ async def dictate(message: Message, state: FSMContext):
             to_dictate = dict(list_)
         list_of_dict = list(to_dictate.keys())
         await state.update_data(to_dictate=to_dictate, count=0, correct=0, incorrect=0)
-        await message.answer(f'<b>1/{len(list_of_dict)})</b> <code>{list_of_dict[0]}</code>', reply_markup=await stop_markup(), parse_mode=ParseMode.HTML)
+        await message.answer(f'<b>1/{len(list_of_dict)})</b> <code>{list_of_dict[0]}</code>',
+                             reply_markup=await stop_markup(), parse_mode=ParseMode.HTML)
         await Dictation.dictate.set()
 
 
-@dp.message_handler(commands=['make'], state='*')   # TODO DICT_TRANSLATION
+@dp.message_handler(commands=['make'], state='*')  # TODO DICT_TRANSLATION
 async def make_dict(message: Message, state: FSMContext):
     await cancel_state(state)
     await message.answer('None!')
@@ -178,7 +194,8 @@ async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
     list_of_dict = list(to_dictate.keys())
     items = list(to_dictate.items())
     if message.text == emojize('Остановить:stop_sign:'):
-        await message.answer(await dictation_statistics(count, correct, incorrect), parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
+        await message.answer(await dictation_statistics(count, correct, incorrect), parse_mode=ParseMode.MARKDOWN,
+                             reply_markup=await menu_markup())
         await state.finish()
     else:
         request_answer = message.text.lower().strip()
@@ -197,7 +214,8 @@ async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
             await state.finish()
         else:
             await state.update_data(count=count, correct=correct, incorrect=incorrect)
-            await message.answer(f'<b>{count + 1}/{len(list_of_dict)})</b> <code>{list_of_dict[count]}</code>', parse_mode=ParseMode.HTML)
+            await message.answer(f'<b>{count + 1}/{len(list_of_dict)})</b> <code>{list_of_dict[count]}</code>',
+                                 parse_mode=ParseMode.HTML)
             await Dictation.dictate.set()
 
 
@@ -227,7 +245,8 @@ async def state_Synthesize_text_call(call: CallbackQuery, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(contain=['Начало диктанта', 'Добавить диктант', 'Получить текущий диктант', 'Настройки', 'Автоматически перевести диктант', 'Синтез'])    # TODO DICT_TRANSLATION
+@dp.message_handler(contain=['Начало диктанта', 'Добавить диктант', 'Получить текущий диктант', 'Настройки',
+                             'Автоматически перевести диктант', 'Синтез'])  # TODO DICT_TRANSLATION
 async def menu_messages(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
@@ -282,15 +301,7 @@ async def other_messages(message: Message, state: FSMContext):
     if msg == emojize('Остановить:stop_sign:'):
         await message.answer('Меню.', reply_markup=await menu_markup())
     else:
-        detectedLanguage = await ya.detect(msg)
-        translatedText = None
-        if detectedLanguage == 'en':
-            translatedText = await ya.translate(msg, 'ru', 'en')
-        elif detectedLanguage == 'ru':
-            translatedText = await ya.translate(msg, 'en', 'ru')
-        markup = InlineKeyboardMarkup().row(InlineKeyboardButton('Синтезировать', callback_data=translatedText))
-        await message.answer(hcode(translatedText), parse_mode=ParseMode.HTML, reply_markup=markup)
-        await Synthesize.text.set()
+        await translate(message, message.text, ya, Synthesize)
 
 
 @dp.callback_query_handler()
