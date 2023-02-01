@@ -1,0 +1,43 @@
+{
+   "ru": {
+           "alena": {
+               "male": false,
+               "role": [
+                   "good"
+               ]
+           },
+           "filipp": {
+               "male": true,
+               "role": []
+           },
+           "ermil": {
+               "male": true,
+               "role": [
+                   "good"
+               ]
+           },
+           "jane": {
+               "male": false,
+               "role": [
+                   "good",
+                   "evil"
+               ]
+           },
+           "madirus": {
+               "male": true,
+               "role": []
+           },
+           "omazh": {
+               "male": false,
+               "role": [
+                   "evil"
+               ]
+           },
+           "zahar": {
+               "male": true,
+               "role": [
+                   "good"
+               ]
+           }
+       }
+}

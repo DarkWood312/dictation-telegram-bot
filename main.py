@@ -11,8 +11,8 @@ from aiogram.types import Message, ParseMode, CallbackQuery, InlineKeyboardMarku
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.markdown import hcode, hbold
 from emoji import demojize, emojize
-from config import token, sql, ya
-from keyboards import options_markup, menu_markup, stop_markup
+from config import token, sql, ya, voices
+from keyboards import options_markup, menu_markup, stop_markup, voice_choosing_markup
 from defs import cancel_state, dict_transformation, dictation_statistics, translate
 
 logging.basicConfig(level=logging.DEBUG)
@@ -62,6 +62,11 @@ class Options(StatesGroup):
 
 class Synthesize(StatesGroup):
     text = State()
+    textCall = State()
+
+
+class VoiceChoosing(StatesGroup):
+    choose = State()
 
 
 @dp.message_handler(commands=['gs', 'ds'], state='*', is_admin=True)
@@ -77,7 +82,7 @@ async def OptionState(message: Message, state: FSMContext):
         await message.answer('no state')
 
 
-@dp.message_handler(content_types=ContentType.VOICE, state='*')
+@dp.message_handler(content_types=[ContentType.VOICE, ContentType.AUDIO, ContentType.ANIMATION], state='*')
 async def other_audio(message: Message, state: FSMContext):
     await cancel_state(state)
     file_path = (await message.voice.get_file())['file_path']
@@ -93,14 +98,6 @@ async def start_message(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
                        message.from_user.last_name)
-    #     await message.answer(
-    #         '''/start | /info - *Получить это информационное сообщение*
-    # /cancel - *Отмена действия*
-    # /add - *Добавить новый диктант*
-    # /run | /begin | /dictate - *Запустить диктант*
-    # /get - *Получить текущий диктант*
-    # /options | /settings - *Настройки* _(Перемешивание слов, разделитель и тд...)_
-    # ''' , parse_mode=ParseMode.MARKDOWN, reply_markup=await menu_markup())
     await message.answer('*Добро пожаловать!*\n\n*Подсказки:*\n_Бот автоматически переведёт присланный ему текст или аудио_',
                          reply_markup=await menu_markup(), parse_mode=ParseMode.MARKDOWN)
 
@@ -180,7 +177,7 @@ async def options(message: Message, state: FSMContext):
 @dp.message_handler(commands='synthesize', state='*')
 async def synthesize(message: Message, state: FSMContext):
     await cancel_state(state)
-    await message.answer('Введите текст для синтеза', reply_markup=await stop_markup())
+    await message.answer('Введите текст для озвучки:', reply_markup=await stop_markup())
     await Synthesize.text.set()
 
 
@@ -201,11 +198,11 @@ async def state_Dictation_Dictate(message: types.Message, state: FSMContext):
         request_answer = message.text.lower().strip()
         answer = items[count][1].strip()
 
-        if request_answer == answer:
-            await message.answer('Правильно!')
+        if request_answer == answer.lower():
+            await message.answer(hbold('Правильно!'), parse_mode=ParseMode.HTML)
             correct += 1
         else:
-            await message.answer(f'Неправильно --> {items[count][1].strip()}')
+            await message.answer(f'{hbold("Неправильно!")} --> {hcode(items[count][1].strip())}', parse_mode=ParseMode.HTML)
             incorrect += 1
         count += 1
         if len(items) == count:
@@ -230,23 +227,25 @@ async def state_Synthesize_text(message: Message, state: FSMContext):
         if lang == 'en':
             fileBytes = await ya.synthesize(msg)
         else:
-            fileBytes = await ya.synthesize(msg, language='ru-RU')
+            voice = await sql.get_data(message.from_user.id, 'voiceru')
+            fileBytes = await ya.synthesize(msg, language='ru-RU', voice=voice)
         await message.answer_audio(InputFile(fileBytes, 'audio.opus'))
 
 
-@dp.callback_query_handler(state=Synthesize.text)
+@dp.callback_query_handler(state=Synthesize.textCall)
 async def state_Synthesize_text_call(call: CallbackQuery, state: FSMContext):
     lang = await ya.detect(call.data)
     if lang == 'en':
         fileBytes = await ya.synthesize(call.data)
     else:
-        fileBytes = await ya.synthesize(call.data, language='ru-RU')
+        voice = await sql.get_data(call.from_user.id, 'voiceru')
+        fileBytes = await ya.synthesize(call.data, language='ru-RU', voice=voice)
     await call.message.answer_audio(InputFile(fileBytes, 'audio.opus'))
     await state.finish()
 
 
 @dp.message_handler(contain=['Начало диктанта', 'Добавить диктант', 'Получить текущий диктант', 'Настройки',
-                             'Автоматически перевести диктант', 'Синтез'])  # TODO DICT_TRANSLATION
+                             'Автоматически перевести диктант', 'Озвучка'])  # TODO DICT_TRANSLATION
 async def menu_messages(message: Message, state: FSMContext):
     await cancel_state(state)
     await sql.add_user(message.from_user.id, message.from_user.username, message.from_user.first_name,
@@ -260,7 +259,7 @@ async def menu_messages(message: Message, state: FSMContext):
         await get(message, state)
     # elif 'Автоматически перевести диктант' in msg:
     #     await make_dict(message, state)
-    elif 'Синтез' in msg:
+    elif 'Озвучка' in msg:
         await synthesize(message, state)
     elif 'Настройки' in msg:
         await options(message, state)
@@ -306,7 +305,7 @@ async def other_messages(message: Message, state: FSMContext):
 
 @dp.callback_query_handler()
 async def callback_handler(call: CallbackQuery, state: FSMContext):
-    if call.data in ['shuffle', 'separator', 'order']:
+    if call.data in ['shuffle', 'separator', 'order', 'voice']:
         if call.data == 'shuffle':
             await sql.upd_data(call.from_user.id, 'shuffle',
                                False if await sql.get_data(call.from_user.id, 'shuffle') else True)
@@ -319,7 +318,12 @@ async def callback_handler(call: CallbackQuery, state: FSMContext):
             await sql.upd_data(call.from_user.id, 'order_of_words',
                                False if await sql.get_data(call.from_user.id, 'order_of_words') else True)
             await call.message.edit_reply_markup(await options_markup(call.from_user.id))
-
+        elif call.data == 'voice':
+            await call.message.answer('Выбор голоса для русской озвучки: ', reply_markup=await voice_choosing_markup(call.from_user.id))
+    elif call.data.startswith('v_'):
+        text = call.data[2:]
+        await sql.upd_data(call.from_user.id, 'voiceru', text)
+        await call.message.edit_reply_markup(await voice_choosing_markup(call.from_user.id))
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)

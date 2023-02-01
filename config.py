@@ -1,3 +1,5 @@
+import json
+
 from dotenv import load_dotenv
 from os import environ
 from sqdb import Sqdb
@@ -8,3 +10,6 @@ token = environ['API_TOKEN']
 sql = Sqdb(environ['SQL_HOST'], environ['SQL_PASSWORD'], environ['SQL_PORT'], environ['SQL_DATABASE'],
            environ['SQL_USER'])
 ya = YandexTranslator(API_KEY=environ['YA_TRANSLATION_APIKEY'], folder_id=environ['YA_TRANSLATION_FOLDERID'])
+
+with open('voices.json', 'r') as f:
+    voices = json.load(f)

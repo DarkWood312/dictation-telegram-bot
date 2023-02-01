@@ -16,12 +16,12 @@ async def translate(message, text, ya, Synthesize):
     detectedLanguage = await ya.detect(text)
     translatedText = None
     if detectedLanguage == 'en':
-        translatedText = await ya.translate(text, 'ru', 'en')
+        translatedText = await ya.translate_text(text, 'ru', 'en')
     elif detectedLanguage == 'ru':
-        translatedText = await ya.translate(text, 'en', 'ru')
-    markup = InlineKeyboardMarkup().row(InlineKeyboardButton('Синтезировать', callback_data=translatedText))
+        translatedText = await ya.translate_text(text, 'en', 'ru')
+    markup = InlineKeyboardMarkup().row(InlineKeyboardButton('Озвучить', callback_data=translatedText))
     await message.answer(hcode(translatedText), parse_mode=ParseMode.HTML, reply_markup=markup)
-    await Synthesize.text.set()
+    await Synthesize.textCall.set()
 
 
 async def dictation_statistics(count, correct, incorrect):
@@ -87,7 +87,7 @@ class YandexTranslator:
             "Authorization": f"Api-Key {API_KEY}"
         }
 
-    async def translate(self, text: str | list, targetLanguage: str, sourceLanguage: str = None) -> dict:
+    async def translate_text(self, text: str | list, targetLanguage: str, sourceLanguage: str = None) -> dict:
         body = {
             "texts": text,
             "folderId": self.folder_id,
@@ -129,7 +129,7 @@ class YandexTranslator:
             sourceLanguage = await self.detect(to_translate[0])
 
         targetLanguage = 'ru' if sourceLanguage == 'en' else 'en'
-        translationList = (await self.translate(to_translate, targetLanguage))
+        translationList = (await self.translate_text(to_translate, targetLanguage))
 
         l.append([i['text'] for i in translationList])
 
@@ -140,7 +140,7 @@ class YandexTranslator:
 
     async def synthesize(self, text: str, speed=1.0, language: str = 'en-US', voice: str = 'john',
                          emotion: str = 'neutral') -> BytesIO:
-        if language == 'ru-RU':
+        if (language == 'ru-RU') and (voice == 'john'):
             voice = 'alena'
         elif language == 'en-US':
             speed = 0.9
